@@ -32,15 +32,21 @@ public final class FailClosedLlmProvider implements LlmProvider {
 
     @Override
     public String complete(LlmRequest request) {
+        String reason;
         try {
             String answer = primary.complete(request);
             if (answer != null && !answer.isBlank()) {
                 return answer;
             }
+            reason = "empty answer";
         } catch (RuntimeException e) {
-            // Deliberately swallowed: the fallback count is the observable signal.
+            reason = e.getMessage();
         }
-        fallbacks.incrementAndGet();
+        // Visible, but without request content or credentials: only the provider and the cause.
+        if (fallbacks.incrementAndGet() <= 3) {
+            System.err.println("[llm] " + primary.name() + " failed (" + reason + ") for purpose '"
+                    + request.purpose() + "'; using " + fallback.name());
+        }
         return fallback.complete(request);
     }
 

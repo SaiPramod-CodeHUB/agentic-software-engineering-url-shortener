@@ -56,7 +56,7 @@ ApiExceptionHandler: ShortenerException(status) → {"error","message"} (+ Retry
 | `audit` | `AuditLog` | Append-only JSON Lines ("what"), monotonic `seq`, flushed per event |
 | `metrics` | `Metrics` | Counters and MTTR from the audit log; latency from run reports |
 | `replan` | `Replanner` | Output-hash diff → downstream closure → invalidate → scoped re-run |
-| `llm` | `LlmProvider` (+ deterministic, OpenAI, fail-closed) | Model seam, offline by default |
+| `llm` | `LlmProvider` (+ deterministic, Claude, OpenAI, fail-closed), `LlmPrompts`, `LlmOutput` | Model seam, offline by default; strict per-purpose output contracts for hosted models |
 | `tools` | `JavaToolchain`, `SourceIndex` | In-process javac + JUnit Platform; regex code index for impact analysis |
 | `agents` | 15 agents | The work itself |
 | `scenario` | 3 scenarios + environment | End-to-end demonstrations with named checks and evidence |
@@ -196,3 +196,14 @@ latency p50/p95** (nearest rank), task and run success rates. Written to
 - The offline LLM recognises the three scenario features. Other requests
   normalise to `feature=unknown` and stay DRAFT, which is the correct
   fail-safe but means the offline mode only builds what it has templates for.
+  With `AGENTIC_LLM=claude`, `run-request.sh` builds arbitrary requirements.
+- Code generated for an arbitrary requirement is a standalone component with
+  its own generated tests; it is not merged into the service automatically.
+  The generated tests are only as good as the model's reading of the spec,
+  which is why a human signs off before release.
+- Generated code is compiled with `-Xlint:all` but not `-Werror`: a model's
+  harmless warning should not fail an otherwise correct attempt. The gates
+  (tests-must-pass, secrets, PII) decide what ships.
+- Generated code runs inside the orchestrator JVM. That is acceptable for
+  templates and a reviewed demo; production would sandbox it (separate process
+  or container, no network, time and memory limits).

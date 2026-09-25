@@ -1,6 +1,7 @@
 package com.agentsdlc.orchestrator.spec;
 
 import com.agentsdlc.orchestrator.llm.DeterministicLlmProvider;
+import com.agentsdlc.orchestrator.llm.LlmOutput;
 import com.agentsdlc.orchestrator.llm.LlmProvider;
 import com.agentsdlc.orchestrator.llm.LlmRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -51,7 +52,7 @@ public final class RequirementNormalizer {
         LlmRequest call = new LlmRequest("normalize", SYSTEM, request,
                 Map.of("clarifications", writeJson(clarifications)));
         try {
-            return fromJson(JSON.readTree(llm.complete(call)), request, clarifications, version);
+            return fromJson(JSON.readTree(LlmOutput.stripFences(llm.complete(call))), request, clarifications, version);
         } catch (JsonProcessingException | RuntimeException e) {
             // Fail closed: malformed or incomplete model output never becomes a spec.
             try {

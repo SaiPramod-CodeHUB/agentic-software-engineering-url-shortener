@@ -75,7 +75,7 @@ Dependencies download on the first build. After that, nothing touches the networ
 ## Build and test
 
 ```bash
-mvn -B test                 # 75 tests: unit, orchestration, integration (MockMvc), 3 end-to-end scenarios
+mvn -B test                 # 83 tests: unit, orchestration, integration (MockMvc), end-to-end scenarios
 mvn -B javadoc:javadoc      # doclint=all, failOnWarnings=true
 ```
 
@@ -86,6 +86,7 @@ mvn -B javadoc:javadoc      # doclint=all, failOnWarnings=true
 ./run-brownfield.sh   # alias race: triage → impact analysis → reproduce → regression test → fix → refactor → tests/docs → release,
                       # plus guardrail demos and rollback → safe-stop → recovery
 ./run-ambiguous.sh    # "make links smarter": DRAFT + questions → human answers once → spec v2 → re-plan → build
+./run-request.sh "<any requirement>"   # live: your requirement, your approvals (see below)
 ```
 
 Each script prints every check and ends with `RESULT SUCCESS` (exit 0) or
@@ -138,16 +139,48 @@ Flyway; Hibernate only validates it.
 | `shortener.max-ttl-seconds` | `31536000` | Upper bound for `ttlSeconds` |
 | `shortener.visitor-hash-key` | env `SHORTENER_VISITOR_HASH_KEY` | HMAC key that pseudonymises client IPs. Set it in every real deployment |
 
+## Run any requirement (with Claude)
+
+The three scenarios are fixed demos. `run-request.sh` takes **any** requirement
+and runs it through the same governed pipeline, with you as the human at the
+terminal: you answer clarifying questions if the request is vague, and you
+approve the change record and the final release sign-off.
+
+```bash
+export AGENTIC_LLM=claude
+export ANTHROPIC_API_KEY=sk-ant-...          # optional: ANTHROPIC_MODEL (default claude-sonnet-5)
+./run-request.sh "Add a validator for custom alias slugs: 3-32 lowercase letters, digits or hyphens"
+./run-request.sh --auto-approve "..."        # unattended: approvals granted and recorded as auto-approve
+```
+
+What happens: Claude normalises the request into a spec (with an ambiguity
+score) → vague requests stop as `DRAFT` and ask you questions → design →
+Claude writes the implementation → Claude writes tests, which are compiled and
+run in-process → docs → change record (your approval) → release (your final
+sign-off). All gates apply: secrets and PII scans, tests-must-pass, change
+control. Evidence goes to `working_tree/request/`, the generated code to
+`working_tree/request/generated/`.
+
+Boundaries, by design:
+- The generated code is a **standalone, tested component**; it is not merged
+  into the shortener. Integrating it is a human-reviewed change.
+- Any model failure (bad key, timeout, malformed JSON) is reported on stderr
+  and **fails closed** to the offline provider. That provider only knows the
+  demo features, so an unknown request then safely stops as a DRAFT.
+- Without a key, `run-request.sh` still runs offline: it builds the demo
+  features and refuses to build anything it cannot specify.
+
 ## Offline and optional hosted model
 
 The default `DeterministicLlmProvider` is rule-based and template-backed, so the
-same input always gives the same output. To try a hosted model, set
-`AGENTIC_LLM=openai` and `OPENAI_API_KEY` (optionally `OPENAI_MODEL`,
-`OPENAI_URL`). Calls are wrapped in `FailClosedLlmProvider`, so any error or
-empty answer falls back to the offline provider. The requirement normaliser
-also rejects malformed model JSON. Scenario checks are written against the
-offline provider's output, so a hosted model may legitimately fail them. The
-gates still judge its code.
+same input always gives the same output. That is why the fixed scenarios and CI
+are reproducible. Hosted models are opt-in: `AGENTIC_LLM=claude` with
+`ANTHROPIC_API_KEY`, or `AGENTIC_LLM=openai` with `OPENAI_API_KEY`. Each purpose
+(normalise, design, code, test, docs, triage) sends the model a strict output
+contract (`LlmPrompts`), and output is cleaned (`LlmOutput`) before it is parsed
+or compiled. Calls are wrapped in `FailClosedLlmProvider`. The fixed scenarios'
+checks are written against the offline output, so a hosted model may
+legitimately fail some of them; `run-request.sh` is the path for hosted models.
 
 ## Documentation
 

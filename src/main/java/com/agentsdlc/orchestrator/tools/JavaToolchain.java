@@ -102,7 +102,7 @@ public final class JavaToolchain {
             StringWriter diagnostics = new StringWriter();
             try (StandardJavaFileManager files = compiler.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
                 List<String> options = List.of("-d", outDir.toString(), "-classpath", hostClasspath(),
-                        "--release", "21", "-proc:none", "-Xlint:all", "-Werror");
+                        "--release", "21", "-proc:none", "-Xlint:all");
                 boolean ok = compiler.getTask(diagnostics, files, null, options, null,
                         files.getJavaFileObjectsFromPaths(sources)).call();
                 return new CompileResult(ok, diagnostics.toString());

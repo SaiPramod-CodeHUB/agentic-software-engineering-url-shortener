@@ -466,6 +466,11 @@ re-planning → agents → scenarios → tests → scripts & packaging.
 - What: returns scripted answers for the asked question ids; counts calls.
 - Why: the ambiguous scenario proves the human was asked exactly once.
 
+
+### `approval/ConsolePrompter.java`, `ConsoleApprovalProvider.java`, `ConsoleClarificationProvider.java`
+- What: a real human at the terminal. `ConsolePrompter` pairs each question with its answer under one lock, since parallel tasks could ask at once. The approval provider accepts only `y`/`yes`; anything else, including end of input, is a rejection (fail closed). `--auto-approve` grants and records "auto-approve" as the approver note. The clarification provider skips blank answers, so an under-specified request stays a draft.
+- Why: `run-request.sh` lets an interviewer be the human checkpoint live.
+
 ---
 
 ## 6. Gates (`orchestrator.gate`)
@@ -664,7 +669,7 @@ re-planning → agents → scenarios → tests → scripts & packaging.
   - Why: generated code is real Java that is compiled and executed, not strings compared by equality. Any provider's output goes through the same compile, test and gate path.
 
 ### `FailClosedLlmProvider.java`
-- What: tries the primary; on an exception or blank answer, counts a fallback and uses the secondary.
+- What: tries the primary; on an exception or blank answer, counts a fallback, prints one line to stderr (provider, cause, purpose; never the request or key; at most 3 times), and uses the secondary.
 - Why: a model outage degrades to known-good behaviour.
 - Not: propagating the error, which would stop every pipeline during a vendor outage.
 
@@ -674,8 +679,23 @@ re-planning → agents → scenarios → tests → scripts & packaging.
 - Approach: the key comes from the environment and is never logged. `vars` are appended to the prompt.
 
 ### `LlmProviders.java`
-- What: `fromEnvironment(env)`. OpenAI is used only if `AGENTIC_LLM=openai` **and** a key is present, and is always wrapped in the fail-closed provider. Otherwise the offline provider is used.
-- Why: the default is offline, so an accidental key in the environment does not turn on network calls.
+- What: `fromEnvironment(env)`. Claude is used only if `AGENTIC_LLM=claude` **and** `ANTHROPIC_API_KEY` is set (model from `ANTHROPIC_MODEL`, default `claude-sonnet-5`); OpenAI only if `AGENTIC_LLM=openai` **and** `OPENAI_API_KEY` is set. Hosted models are always wrapped in `FailClosedLlmProvider`; otherwise the offline provider is used.
+- Why: the default is offline, so a key that happens to be in the environment never turns on network calls by itself.
+
+### `AnthropicLlmProvider.java`
+- What: a Messages API call (`POST /v1/messages`) via `java.net.http`: headers `x-api-key` and `anthropic-version`, body `model`, `max_tokens`, `system`, one user message. Text blocks in `content` are concatenated. Non-200, or no text, raises `LlmException`.
+- Why: Claude as a real planner and coder behind the same seam, with no SDK dependency.
+- Approach: `.proxy(ProxySelector.getDefault())` so corporate proxies and `https.proxyHost` work; 120 s timeout for long code answers; the key is never logged.
+- Not: the vendor SDK, a heavy dependency for one HTTP call, and it would hide the request shape we test against a fake server.
+
+### `LlmPrompts.java`
+- What: `system(request)` = the agent's instruction plus a strict **output contract** per purpose (normalize/triage → JSON only with named keys; code/main → one compilable Java 21 file in `generated.<feature>`, JDK only; code/test → one JUnit 5 class, 3+ tests; design/docs → Markdown). `user(request)` = the prompt plus the structured inputs. `packageFor(feature)` makes a legal package name.
+- Why: every model answer is parsed or compiled by code, so the shape must be specified exactly. The offline provider ignores these contracts.
+- Not: letting each agent write its own free-form prompt, which scatters the contracts and makes model swaps risky.
+
+### `LlmOutput.java`
+- What: `stripFences(text)` returns the body of the first Markdown code fence, else the trimmed text.
+- Why: models often wrap JSON or Java in ``` fences even when told not to; cleaning is cheaper and safer than failing the attempt. Used by the normaliser, triage, implementer and tester.
 
 ---
 
@@ -721,8 +741,8 @@ re-planning → agents → scenarios → tests → scripts & packaging.
   - What: prefers `surefire.test.class.path`, else `java.class.path`.
   - Why: under Surefire, `java.class.path` is a single manifest-only booter jar, and javac would not find JUnit.
 - **`compile`**
-  - What: `ToolProvider.getSystemJavaCompiler()`, options `--release 21 -proc:none -Xlint:all -Werror`. Diagnostics are captured.
-  - Why: generated code must be warning-free too. `-proc:none` stops stray annotation processors running.
+  - What: `ToolProvider.getSystemJavaCompiler()`, options `--release 21 -proc:none -Xlint:all`. Diagnostics are captured.
+  - Why: warnings are reported but do not fail the attempt, because a hosted model's harmless warning should not reject correct code; tests and gates decide what ships. `-proc:none` stops stray annotation processors running.
   - A null compiler means a JRE, reported clearly.
 - **`runTests`**
   - What: a fresh `URLClassLoader` over the output directory (parent = this class's loader, which holds JUnit); the TCCL is swapped for engine discovery; JUnit Platform `LauncherFactory` with a `SummaryGeneratingListener`; returns counts and failure messages; restores the TCCL and closes the loader.
@@ -915,8 +935,13 @@ All agents read inputs with `ctx.require(...)`, which fails loudly on a broken u
   5. Run 3 with scope `invalidated` → SUCCEEDED, with repo-inventory and requirements REUSED.
 - Checks: `IdleExpiryPolicy` generated and tested; `human.calls()==1` and exactly one repo-inventory attempt across all runs; final sign-off.
 
+### `RequestScenario.java`
+- What: any requirement through the **feature** template: normalise (planning audit event) → run → if the spec is DRAFT, ask the human once, store the answers in `_human`, re-run `requirements`, `replan`, run the invalidated scope. Checks: spec READY, pipeline completed, generated tests ran and passed, human sign-off recorded. Prints the path of the generated source.
+- Why the feature template only: the incident template is wired to the alias-race demo fixture; a live incident would need its own reproduction harness.
+- Boundary: the generated code is a standalone tested component, not merged into the service.
+
 ### `ScenarioMain.java`
-- What: CLI `<scenario> [outDir] [repoRoot]`; `System.exit(0|1|2)`.
+- What: `<greenfield|brownfield|ambiguous> [outDir] [repoRoot]` runs a fixed scenario; `request [--auto-approve] "<requirement>"` wires `ConsoleApprovalProvider`, `ConsoleClarificationProvider` and `LlmProviders.fromEnvironment()` into `RequestScenario`. `System.exit(0|1|2)`.
 - Why: shell scripts and CI can gate on the exit code.
 
 ---
@@ -944,6 +969,13 @@ All agents read inputs with `ctx.require(...)`, which fails loudly on a broken u
 ### `orchestrator/Harness.java`
 - What: a fixed clock, a recording sleeper, scripted approvals, a temp directory, the standard gates (overridable); `events(type, task)`.
 
+### `orchestrator/HostedLlmTest.java`
+- What: starts a JDK `HttpServer` on 127.0.0.1 as a fake Messages API and checks the request headers and body, multi-block text parsing, HTTP 401 → `LlmException` → fail-closed fallback with the counter incremented, opt-in selection, fence stripping and package naming.
+- Why: proves the Claude path without a key or network.
+
+### `orchestrator/RequestScenarioTest.java`
+- What: a `FakeModel` answers like a hosted model (fenced JSON, fenced Java, a feature name it chose). Four tests: clear request built with 3 passing generated tests; vague request → human asked once → re-plan → built; human rejects the final sign-off → safe stop with zero rollbacks; offline provider refuses an unknown request (blocked after 2 attempts).
+
 ### `orchestrator/TaskGraphTest.java`, `OrchestratorTest.java`, `GatesTest.java`, `ReplannerTest.java`, `MetricsTest.java`, `NormalizerAndLlmTest.java`, `StateAndAuditTest.java`, `ScenarioTest.java`
 - What: see the table in [docs/TESTING.md](docs/TESTING.md). Techniques worth noting:
   - `OrchestratorTest.tasksInAWaveRunConcurrently…` proves real parallelism with a `CyclicBarrier(2)`: sequential execution would time out.
@@ -960,6 +992,9 @@ All agents read inputs with `ctx.require(...)`, which fails loudly on a broken u
 - What: `set -euo pipefail`; `mvn -q -DskipTests compile dependency:build-classpath` (runtime scope into `target/classpath.txt`); `java -cp target/classes:$(cat …) ScenarioMain <name> working_tree .`.
 - Why: a plain JVM classpath, so the in-process compiler sees every dependency.
 - Not: `mvn exec:java`, which runs in Maven's isolated class loader with the wrong `java.class.path`, so `javac` would not find JUnit.
+
+### `run-request.sh`
+- What: builds, then runs `ScenarioMain request "$@"`, so stdin stays attached to the terminal for live approvals and answers. Usage text explains `AGENTIC_LLM=claude` and `ANTHROPIC_API_KEY`.
 
 ### `run-greenfield.sh`, `run-brownfield.sh`, `run-ambiguous.sh`
 - What: one-line `exec` wrappers.

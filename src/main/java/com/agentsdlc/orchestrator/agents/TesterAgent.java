@@ -2,6 +2,7 @@ package com.agentsdlc.orchestrator.agents;
 
 import com.agentsdlc.orchestrator.core.Agent;
 import com.agentsdlc.orchestrator.core.TaskContext;
+import com.agentsdlc.orchestrator.llm.LlmOutput;
 import com.agentsdlc.orchestrator.llm.LlmRequest;
 import com.agentsdlc.orchestrator.tools.JavaToolchain;
 import java.io.IOException;
@@ -43,11 +44,15 @@ public final class TesterAgent implements Agent {
     @Override
     public void execute(TaskContext ctx) throws IOException {
         String feature = ctx.require(specTask, "spec.feature");
-        String testSource = ctx.llm().complete(new LlmRequest("code", "Write JUnit 5 tests.",
-                ctx.require(specTask, "spec.md"), Map.of("feature", feature, "template", feature + "/test")));
+        Path mainFile = ctx.workDir().resolve(ctx.require(implementTask, "source.path"));
+        String prompt = ctx.require(specTask, "spec.md") + "\n\nImplementation under test:\n"
+                + Files.readString(mainFile)
+                + ctx.lastFailure().map(f -> "\n\nThe previous test attempt failed: " + f
+                        + "\nWrite tests that match the implementation's actual, specified behaviour.").orElse("");
+        String testSource = LlmOutput.stripFences(ctx.llm().complete(new LlmRequest("code", "Write JUnit 5 tests.",
+                prompt, Map.of("feature", feature, "template", feature + "/test"))));
         String testClass = AgentSupport.qualifiedClassName(testSource);
         Path testFile = ctx.writeArtifact(TEST_ROOT + AgentSupport.sourcePath(testClass), testSource);
-        Path mainFile = ctx.workDir().resolve(ctx.require(implementTask, "source.path"));
 
         Path classes = ctx.workDir().resolve("generated/classes");
         deleteRecursively(classes);

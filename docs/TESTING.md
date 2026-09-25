@@ -1,6 +1,6 @@
 # Testing
 
-`mvn -B test` runs **75 tests** in about 20 seconds, with no network access.
+`mvn -B test` runs **83 tests** in about 20 seconds, with no network access.
 JUnit counts each parameterised case separately.
 
 | Layer | Class | Tests | What it proves |
@@ -17,6 +17,8 @@ JUnit counts each parameterised case separately.
 | Orchestration | `NormalizerAndLlmTest` | 5 | DRAFT + questions for vague input; clarified → READY with testable criteria; kind classification; **malformed model output fails closed**; provider selection is offline by default, and a failing hosted model falls back |
 | Orchestration | `StateAndAuditTest` | 3 | Order-independent, length-prefixed hashing; snapshot/restore; 1,000 concurrent writes; audit `seq` strictly 1..n across 50 concurrent writers and a reopen; keys sorted |
 | End-to-end | `ScenarioTest` | 3 | Runs the three scenarios exactly as the scripts do (into `target/test-working-tree`) and asserts every named check |
+| Hosted model | `HostedLlmTest` | 4 | Claude provider against a local fake Messages API: request shape and headers, multi-block text, HTTP error → fail closed with a visible fallback, opt-in selection, fence stripping, package naming |
+| End-to-end | `RequestScenarioTest` | 4 | The any-requirement pipeline with a scripted model that answers in code fences: clear request built and tested; vague request → human asked once → re-plan → built; human rejects sign-off → safe stop, no rollback; offline mode refuses to build an unknown request |
 
 Outside `mvn test`:
 
@@ -60,7 +62,7 @@ Outside `mvn test`:
 | LLM output | `DeterministicLlmProvider`: same input, same output |
 | Map iteration order | Waves sort ids; audit data keys are sorted; the re-plan sets are sorted |
 | Shared state across tests | Each Spring context gets its own in-memory H2 (`${random.uuid}` URL); orchestrator tests use `@TempDir` |
-| Network | None at runtime. The OpenAI provider is only built when explicitly enabled |
+| Network | None at runtime. Hosted providers (Claude, OpenAI) are only built when explicitly enabled; their tests use a local fake server |
 
 Metric *values* such as latency and MTTR depend on the machine. Tests assert
 on their relationships (p95 ≥ p50, MTTR present), never their magnitudes.

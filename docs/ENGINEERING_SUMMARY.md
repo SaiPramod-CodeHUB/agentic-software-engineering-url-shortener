@@ -51,7 +51,8 @@ merely calls a model in a loop does not meet that bar.
 
 | Command | Result |
 |---|---|
-| `mvn -B test` | **75 tests, 0 failures, 0 errors** |
+| `mvn -B test` | **83 tests, 0 failures, 0 errors** |
+| `./run-request.sh "<requirement>"` | Any requirement through the full governed pipeline; with Claude it generates, compiles and tests new code. Verified in tests with a scripted model and a fake Messages API (no live key in this environment) |
 | `./run-greenfield.sh` | `RESULT SUCCESS`, 9/9 checks. The implementer's first attempt carried a scripted credential; `secrets-scan` blocked it; the retry was clean; 4 generated JUnit tests compiled and passed in-process; change record approved; final sign-off recorded |
 | `./run-brownfield.sh` | `RESULT SUCCESS`, 23/23 checks. The race was reproduced (2 winners for one alias); the regression test failed on legacy code and passed after the fix; refactor stayed green; tests went from 1 to 5; stale doc corrected; destructive-LOW task blocked; human rejection → safe-stop with SKIPPED downstream; canary failure → retries at 10 and 20 ms → compensation in the order `backfill-aliases, apply-migration` → DB byte-identical to before → recovery run succeeded; MTTR computed |
 | `./run-ambiguous.sh` | `RESULT SUCCESS`, 9/9 checks. Ambiguity 0.95 → DRAFT with 3 questions → design BLOCKED → human asked **once** → spec v2 READY → re-plan invalidated exactly {design, implement, test, docs, change-record, release}, preserved {repo-inventory} → built and released idle-link expiry (3 tests green) |
@@ -186,3 +187,13 @@ reverse in rollback, re-snapshotting before each retry, and "fixing" the race
 with a plain `put`. In each case the corresponding test failed. The
 concurrency tests count winners in the database rather than trusting return
 values.
+
+**Q13. Aren't your agents just templates?**
+In offline mode, yes, deliberately: CI and the three demos must be reproducible.
+The same agents run against Claude with one environment variable
+(`AGENTIC_LLM=claude`), and `run-request.sh` takes any requirement: Claude
+writes the spec, design, code and tests, and the orchestrator compiles and runs
+them, scans them, and puts a human in front of the release. The governance does
+not change with the model, which is the point: it must hold whatever the model
+produces, including when the model is wrong or unavailable (then it fails
+closed to offline mode and the request safely stops as a draft).

@@ -2,6 +2,7 @@ package com.agentsdlc.orchestrator.agents;
 
 import com.agentsdlc.orchestrator.core.Agent;
 import com.agentsdlc.orchestrator.core.TaskContext;
+import com.agentsdlc.orchestrator.llm.LlmOutput;
 import com.agentsdlc.orchestrator.llm.LlmRequest;
 import java.util.Map;
 
@@ -40,8 +41,16 @@ public final class ImplementerAgent implements Agent {
     @Override
     public void execute(TaskContext ctx) {
         String feature = ctx.require(specTask, "spec.feature");
-        String source = ctx.llm().complete(new LlmRequest("code", "Implement the feature in Java 21.",
-                ctx.require(specTask, "spec.md"), Map.of("feature", feature, "template", feature + "/main")));
+        String prompt = ctx.require(specTask, "spec.md")
+                + ctx.get("design", "design.md").map(d -> "\n\nDesign:\n" + d).orElse("")
+                + ctx.lastFailure().map(f -> "\n\nThe previous attempt was rejected: " + f + "\nFix that.")
+                .orElse("");
+        String source = LlmOutput.stripFences(ctx.llm().complete(new LlmRequest("code",
+                "Implement the feature in Java 21.", prompt,
+                Map.of("feature", feature, "template", feature + "/main"))));
+        if (!source.endsWith("\n")) {
+            source = source + "\n";
+        }
         boolean flaggedBefore = ctx.lastFailure().map(f -> f.contains("secrets-scan")).orElse(false);
         if (injectCredentialOnFirstAttempt && ctx.attempt() == 1) {
             // Assembled at runtime so this repository's own source never contains the pattern.

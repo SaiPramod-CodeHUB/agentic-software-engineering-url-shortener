@@ -1,6 +1,6 @@
 package com.agentsdlc.orchestrator.scenario;
 
-import com.agentsdlc.orchestrator.approval.ScriptedApprovalProvider;
+import com.agentsdlc.orchestrator.approval.ApprovalProvider;
 import com.agentsdlc.orchestrator.audit.AuditLog;
 import com.agentsdlc.orchestrator.core.TaskGraph;
 import com.agentsdlc.orchestrator.engine.Orchestrator;
@@ -50,7 +50,7 @@ public final class ScenarioEnvironment implements AutoCloseable {
     private final AuditLog audit;
     private final DecisionLog decisions;
     private final LlmProvider llm;
-    private final ScriptedApprovalProvider approvals;
+    private final ApprovalProvider approvals;
     private final Orchestrator orchestrator;
     private final List<RunReport> runs = new ArrayList<>();
     private final List<Check> checks = new ArrayList<>();
@@ -62,11 +62,26 @@ public final class ScenarioEnvironment implements AutoCloseable {
      * @param name      scenario name (also the working directory name)
      * @param outRoot   parent directory for scenario output
      * @param repoRoot  repository root analysed by the agents
-     * @param approvals scripted human approver
+     * @param approvals human approver (scripted, or the console for live runs)
      * @param out       console for progress output
      */
-    public ScenarioEnvironment(String name, Path outRoot, Path repoRoot, ScriptedApprovalProvider approvals,
+    public ScenarioEnvironment(String name, Path outRoot, Path repoRoot, ApprovalProvider approvals,
                                PrintStream out) {
+        this(name, outRoot, repoRoot, approvals, LlmProviders.fromEnvironment(), out);
+    }
+
+    /**
+     * Creates the environment with an explicit LLM provider (used by tests and live runs).
+     *
+     * @param name      scenario name (also the working directory name)
+     * @param outRoot   parent directory for scenario output
+     * @param repoRoot  repository root analysed by the agents
+     * @param approvals human approver
+     * @param llm       language model
+     * @param out       console for progress output
+     */
+    public ScenarioEnvironment(String name, Path outRoot, Path repoRoot, ApprovalProvider approvals,
+                               LlmProvider llm, PrintStream out) {
         this.name = name;
         this.workDir = outRoot.resolve(name).toAbsolutePath().normalize();
         this.repoRoot = repoRoot.toAbsolutePath().normalize();
@@ -75,7 +90,7 @@ public final class ScenarioEnvironment implements AutoCloseable {
         Clock clock = Clock.systemUTC();
         this.audit = new AuditLog(workDir.resolve("audit.jsonl"), clock);
         this.decisions = new DecisionLog(workDir.resolve("decisions.jsonl"), clock);
-        this.llm = LlmProviders.fromEnvironment();
+        this.llm = llm;
         this.approvals = approvals;
         this.orchestrator = Orchestrator.builder().state(state).audit(audit).decisions(decisions).llm(llm)
                 .workDir(workDir).parallelism(4)
@@ -210,11 +225,11 @@ public final class ScenarioEnvironment implements AutoCloseable {
     }
 
     /**
-     * Returns the scripted approver.
+     * Returns the approver.
      *
      * @return the approver
      */
-    public ScriptedApprovalProvider approvals() {
+    public ApprovalProvider approvals() {
         return approvals;
     }
 

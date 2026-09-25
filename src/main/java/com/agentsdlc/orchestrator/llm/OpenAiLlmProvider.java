@@ -3,6 +3,7 @@ package com.agentsdlc.orchestrator.llm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -33,7 +34,8 @@ public final class OpenAiLlmProvider implements LlmProvider {
      * @param endpoint chat-completions URL
      */
     public OpenAiLlmProvider(String apiKey, String model, URI endpoint) {
-        this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+        this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
+                .proxy(ProxySelector.getDefault()).build(); // honours https.proxyHost / corporate proxies
         this.apiKey = apiKey;
         this.model = model;
         this.endpoint = endpoint;
@@ -51,8 +53,8 @@ public final class OpenAiLlmProvider implements LlmProvider {
                     "model", model,
                     "temperature", 0,
                     "messages", List.of(
-                            Map.of("role", "system", "content", request.system()),
-                            Map.of("role", "user", "content", request.prompt() + "\n\nInputs: " + request.vars()))));
+                            Map.of("role", "system", "content", LlmPrompts.system(request)),
+                            Map.of("role", "user", "content", LlmPrompts.user(request)))));
             HttpRequest httpRequest = HttpRequest.newBuilder(endpoint)
                     .timeout(Duration.ofSeconds(60))
                     .header("Authorization", "Bearer " + apiKey)
