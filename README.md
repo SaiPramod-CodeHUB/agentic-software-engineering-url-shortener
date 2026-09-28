@@ -60,8 +60,7 @@ Reproduce, RegressionTest, MigrateFix, Refactor, TestDocImprovement, ChangeRecor
 Release) talk only through the StateStore, never to each other.
 ```
 
-Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Line-by-line
-explanation: [CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md).
+Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ## Prerequisites
 
@@ -185,9 +184,7 @@ legitimately fail some of them; `run-request.sh` is the path for hosted models.
 ## Documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): components, execution model, decisions and trade-offs
-- [docs/ENGINEERING_SUMMARY.md](docs/ENGINEERING_SUMMARY.md): plan, validation results, risks, interview Q&A
 - [docs/TESTING.md](docs/TESTING.md): test strategy, determinism, and every bug found during the build
-- [CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md): every file: what, why, why this way, why not the alternative
 
 ## License
 
