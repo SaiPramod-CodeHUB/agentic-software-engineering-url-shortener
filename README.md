@@ -192,3 +192,10 @@ legitimately fail some of them; `run-request.sh` is the path for hosted models.
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+## How this was built
+
+Built with AI assistance (Claude, by Anthropic), which fits the topic: AI-driven
+software engineering. I defined the requirements, directed and reviewed the work,
+verified every scenario and endpoint on my own machine, and can walk through and
+change any part of it.
