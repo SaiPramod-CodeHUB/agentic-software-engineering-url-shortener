@@ -185,6 +185,7 @@ legitimately fail some of them; `run-request.sh` is the path for hosted models.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): components, execution model, decisions and trade-offs
 - [docs/TESTING.md](docs/TESTING.md): test strategy, determinism, and every bug found during the build
+- [docs/ENGINEERING_SUMMARY.md](docs/ENGINEERING_SUMMARY.md): plan, how each requirement is met, validation results, risks, assumptions and limitations
 
 ## License
 
